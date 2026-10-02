@@ -1,0 +1,158 @@
+// Prisma schema for Beta Phone Shop
+// Compatible with both Supabase and Neon PostgreSQL
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// NEXTAUTH MODELS (Google OAuth Support)
+// ==========================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("CUSTOMER") // CUSTOMER or ADMIN
+  accounts      Account[]
+  sessions      Session[]
+  orders        Order[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==========================================
+// E-COMMERCE MODELS
+// ==========================================
+
+model Product {
+  id           String           @id @default(cuid())
+  name         String
+  slug         String           @unique
+  brand        String           // Apple, Samsung, Google, OnePlus, Xiaomi
+  description  String           @db.Text
+  basePrice    Float
+  rating       Float            @default(4.8)
+  reviewCount  Int              @default(24)
+  isFeatured   Boolean          @default(false)
+  isNewArrival Boolean          @default(false)
+  category     String           @default("Smartphones")
+  images       String[]
+  specs        Json             // screen, processor, ram, battery, camera, os, network
+  variants     ProductVariant[]
+  orderItems   OrderItem[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model ProductVariant {
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorName  String      // e.g. "Natural Titanium"
+  colorHex   String      // e.g. "#9a968f"
+  storage    String      // e.g. "128GB", "256GB", "512GB", "1TB"
+  price      Float
+  stock      Int         @default(15)
+  sku        String      @unique
+  image      String?
+  orderItems OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  orderNumber       String        @unique // e.g. "BETA-94812"
+  userId            String?
+  user              User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  shippingAddress   Json          // { street, city, state, postalCode, country }
+  items             OrderItem[]
+  subtotal          Float
+  tax               Float
+  shipping          Float         @default(0.0)
+  total             Float
+  status            OrderStatus   @default(CONFIRMED)
+  paymentMethod     String        @default("CARD")
+  paymentStatus     PaymentStatus @default(COMPLETED)
+  notes             String?
+  mailgunMessageId  String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model OrderItem {
+  id          String          @id @default(cuid())
+  orderId     String
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product         @relation(fields: [productId], references: [id])
+  variantId   String?
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
+  productName String
+  variantName String          // e.g. "Titanium Black - 256GB"
+  unitPrice   Float
+  quantity    Int
+  totalPrice  Float
+  image       String?
+}
